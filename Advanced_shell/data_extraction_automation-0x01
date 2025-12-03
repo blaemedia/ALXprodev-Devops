@@ -7,14 +7,10 @@
   ]
 }
 
-jq -r ".name, .height, .weight, .types[0].type.name" pokemon.json
-
-
-
 jq -r ".name, .height, .weight, .types[0].type.name" pokemon.json | `
 awk "NR==1 {name=toupper(substr(\$0,1,1)) substr(\$0,2)}
      NR==2 {height=\$0/10}
-     NR==3 {weight=\$0/10; weight=int(weight)} 
+     NR==3 {weight=int(\$0/10)}
      NR==4 {type=toupper(substr(\$0,1,1)) substr(\$0,2)}
      END {printf \"%s is of type %s, weighs %dkg, and is %.1fm tall.\n\", name, type, weight, height}"
 
