@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# --- Configuration Section ---
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon/"
+OUTPUT_DIR="pokemon_data"
+# Set an arbitrary time to wait before checking for and killing slow processes
+TIMEOUT_CHECK_SECONDS=5 
+
+# An associative array to hold the Process IDs (PIDs) and their names for tracking
+declare -A POKEMON_PIDS
+
+# --- Function to Handle Fetching (The core worker) ---
+fetch_pokemon_data() {
+    local POKEMON_NAME="$1"
+    local OUTPUT_FILE="${OUTPUT_DIR}/${POKEMON_NAME}.json"
+    local API_URL="${API_BASE_URL}${POKEMON_NAME}"
+    
+    echo "Starting fetch for: ${POKEMON_NAME} (PID: $$)"
+    
+    # Fetch the data
+    curl -sS "${API_URL}" -o "${OUTPUT_FILE}"
+    
+    if [ $? -eq 0 ]; then
+        echo "Finished successfully: ${POKEMON_NAME} saved to ${OUTPUT_FILE} ✅"
+    else
+        # Cleanup incomplete files and report error
+        rm -f "${OUTPUT_FILE}" 2>/dev/null
+        echo "Finished with error: Failed fetching ${POKEMON_NAME}. ❌"
+        exit 1 # Exit with error status so the main script knows it failed
+    fi
+}
+
+# --- Main Script Execution ---
+
+mkdir -p "${OUTPUT_DIR}"
+
+if ! command -v curl &> /dev/null
+then
+    echo "Error: 'curl' command is required but not found. Please install it."
+    exit 1
+fi
+
+echo "--- Starting Parallel Data Retrieval ---"
+
+# 1. Start all jobs and capture PIDs
+for POKEMON_NAME in "${POKEMON_LIST[@]}"; do
+    fetch_pokemon_data "${POKEMON_NAME}" &
+    PID=$! # Capture the Process ID of the last background command
+    POKEMON_PIDS[${PID}]="${POKEMON_NAME}" # Store PID and name mapping
+done
+
+# 2. Wait for a set time (allowing most/all jobs to finish naturally)
+echo "Waiting ${TIMEOUT_CHECK_SECONDS} seconds for all jobs to complete..."
+sleep "${TIMEOUT_CHECK_SECONDS}"
+
+# 3. Check for and kill any processes that are still running
+echo "Checking for any remaining processes that took longer than ${TIMEOUT_CHECK_SECONDS}s..."
+
+for PID in "${!POKEMON_PIDS[@]}"; do
+    # Check if the process ID is still running
+    if ps -p "${PID}" > /dev/null 2>&1; then
+        POKEMON_NAME="${POKEMON_PIDS[${PID}]}"
+        echo "⏰ TIMEOUT: Process ID ${PID} for ${POKEMON_NAME} is still running. Killing it. 💀"
+        # Use the kill command to terminate the process
+        kill "${PID}" 
+    fi
+done
+
+# 4. Final wait to ensure all background processes are completely reaped
+wait
+
+echo "--- Parallel Fetching Complete ---"
