@@ -1,23 +1,48 @@
-for FILE in "${DATA_DIR}"/*.json; do
-    if [ ! -f "$FILE" ]; then
-        continue
-    fi
+#!/bin/bash
 
-    DATA=$(jq -r '[.name, .height, .weight] | @csv' "$FILE")
-    CLEAN_DATA=$(echo "$DATA" | tr -d '"')
-    NAME=$(echo "$CLEAN_DATA" | cut -d',' -f1)
-    RAW_HEIGHT=$(echo "$CLEAN_DATA" | cut -d',' -f2)
-    RAW_WEIGHT=$(echo "$CLEAN_DATA" | cut -d',' -f3)
-    
-    # Capitalize first letter using sed (ALX requirement)
+DATA_DIR="pokemon_data"
+REPORT_FILE="pokemon_report.csv"
+
+# Create CSV header
+echo "Name,Height (m),Weight (kg)" > "$REPORT_FILE"
+
+TOTAL_HEIGHT_M=0
+TOTAL_WEIGHT_KG=0
+COUNT=0
+
+# Loop through JSON files
+for FILE in "$DATA_DIR"/*.json; do
+    [ -f "$FILE" ] || continue  # skip if no files
+
+    NAME=$(jq -r '.name' "$FILE")
+    RAW_HEIGHT=$(jq -r '.height' "$FILE")
+    RAW_WEIGHT=$(jq -r '.weight' "$FILE")
+
+    # Capitalize first letter using sed
     CAPITALIZED_NAME=$(echo "$NAME" | sed 's/^\(.\)/\U\1/')
 
-    FORMATTED_HEIGHT=$(echo "${RAW_HEIGHT}" | awk '{printf "%.1f", $1/10}')
-    FORMATTED_WEIGHT=$(echo "${RAW_WEIGHT}" | awk '{printf "%.1f", $1/10}')
+    # Convert height and weight
+    FORMATTED_HEIGHT=$(echo "$RAW_HEIGHT / 10" | bc -l | awk '{printf "%.1f", $1}')
+    FORMATTED_WEIGHT=$(echo "$RAW_WEIGHT / 10" | bc -l | awk '{printf "%.1f", $1}')
 
-    echo "${CAPITALIZED_NAME},${FORMATTED_HEIGHT},${FORMATTED_WEIGHT}" >> "${REPORT_FILE}"
-    
-    TOTAL_HEIGHT_M=$(echo "${TOTAL_HEIGHT_M} + ${FORMATTED_HEIGHT}" | bc)
-    TOTAL_WEIGHT_KG=$(echo "${TOTAL_WEIGHT_KG} + ${FORMATTED_WEIGHT}" | bc)
+    # Append to CSV
+    echo "${CAPITALIZED_NAME},${FORMATTED_HEIGHT},${FORMATTED_WEIGHT}" >> "$REPORT_FILE"
+
+    # Update totals
+    TOTAL_HEIGHT_M=$(echo "$TOTAL_HEIGHT_M + $FORMATTED_HEIGHT" | bc)
+    TOTAL_WEIGHT_KG=$(echo "$TOTAL_WEIGHT_KG + $FORMATTED_WEIGHT" | bc)
     COUNT=$((COUNT + 1))
 done
+
+# Calculate and display averages
+if [ $COUNT -gt 0 ]; then
+    AVG_HEIGHT=$(echo "scale=2; $TOTAL_HEIGHT_M / $COUNT" | bc | awk '{printf "%.2f", $1}')
+    AVG_WEIGHT=$(echo "scale=2; $TOTAL_WEIGHT_KG / $COUNT" | bc | awk '{printf "%.2f", $1}')
+    echo ""
+    echo "Average Height: ${AVG_HEIGHT} m"
+    echo "Average Weight: ${AVG_WEIGHT} kg"
+else
+    echo "No JSON files found in '$DATA_DIR'. Please run the fetch script first."
+fi
+
+echo "CSV Report generated at: $REPORT_FILE"
