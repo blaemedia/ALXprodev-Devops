@@ -1,6 +1,6 @@
 #!/bin/bash
 
-POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon" "invalid_pokemon")
 API_BASE_URL="https://pokeapi.co/api/v2/pokemon/"
 OUTPUT_DIR="pokemon_data"
 MAX_RETRIES=3
@@ -15,39 +15,92 @@ then
     exit 1
 fi
 
+# Log file for errors
+ERROR_LOG="pokemon_fetch_errors.log"
+echo "Pokemon Fetch Error Log - $(date)" > "${ERROR_LOG}"
+echo "==================================" >> "${ERROR_LOG}"
+
 for POKEMON_NAME in "${POKEMON_LIST[@]}"; do
     echo "Fetching data for ${POKEMON_NAME}..."
     ATTEMPTS=0
     SUCCESS=false
-
+    
     OUTPUT_FILE="${OUTPUT_DIR}/${POKEMON_NAME}.json"
     API_URL="${API_BASE_URL}${POKEMON_NAME}"
-
+    
     while [ ${ATTEMPTS} -lt ${MAX_RETRIES} ]; do
-    curl -sS "${API_URL}" -o "${OUTPUT_FILE}"
-
-    if [ $? -eq 0 ]; then
-            # Success!
-            SUCCESS=true
-            echo "Saved data to ${OUTPUT_FILE} ✅"
-            break # Exit the while loop
+        ((ATTEMPTS++))
+        
+        echo "  Attempt ${ATTEMPTS}/${MAX_RETRIES}..."
+        
+        # Make the API request with timeout and save output
+        curl -sS --max-time 10 "${API_URL}" -o "${OUTPUT_FILE}.tmp"
+        CURL_EXIT_CODE=$?
+        
+        if [ ${CURL_EXIT_CODE} -eq 0 ]; then
+            # Check if the response is valid JSON and contains expected data
+            if jq -e '.name and .height and .weight and .types' "${OUTPUT_FILE}.tmp" > /dev/null 2>&1; then
+                # Valid JSON with required fields
+                mv "${OUTPUT_FILE}.tmp" "${OUTPUT_FILE}"
+                SUCCESS=true
+                echo "  ✅ Saved data to ${OUTPUT_FILE}"
+                break
+            else
+                # Invalid JSON or missing fields (likely 404 or invalid response)
+                echo "  ⚠️  Invalid response for ${POKEMON_NAME} (attempt ${ATTEMPTS})"
+                rm -f "${OUTPUT_FILE}.tmp"
+                
+                # Check if it's a 404 error
+                if grep -q "Not Found" "${OUTPUT_FILE}.tmp" 2>/dev/null; then
+                    echo "  ❌ Pokemon '${POKEMON_NAME}' not found in API"
+                    echo "ERROR: $(date) - Pokemon '${POKEMON_NAME}' not found (404)" >> "${ERROR_LOG}"
+                    break  # No need to retry 404 errors
+                fi
+            fi
         else
-            # Failure: API call or network issue
-            echo "Attempt ${ATTEMPTS} failed for ${POKEMON_NAME}. Retrying in ${RETRY_DELAY_SECONDS} seconds..."
-            # Clean up the partial/corrupt file
-            rm -f "${OUTPUT_FILE}"
+            # curl failed (network error, timeout, etc.)
+            echo "  ⚠️  Network error for ${POKEMON_NAME} (curl exit code: ${CURL_EXIT_CODE})"
+            rm -f "${OUTPUT_FILE}.tmp"
+            
+            # Log specific curl error codes
+            case ${CURL_EXIT_CODE} in
+                6)  ERROR_MSG="Could not resolve host" ;;
+                7)  ERROR_MSG="Failed to connect to host" ;;
+                28) ERROR_MSG="Connection timeout" ;;
+                *)  ERROR_MSG="curl error code ${CURL_EXIT_CODE}" ;;
+            esac
+            echo "  Error details: ${ERROR_MSG}"
+        fi
+        
+        # If not successful and we have retries left, wait before retrying
+        if [ ${ATTEMPTS} -lt ${MAX_RETRIES} ]; then
+            echo "  Waiting ${RETRY_DELAY_SECONDS} seconds before retry..."
             sleep ${RETRY_DELAY_SECONDS}
         fi
     done
+    
     if [ "${SUCCESS}" == "false" ]; then
-        echo "‼️ ERROR: Failed to fetch data for ${POKEMON_NAME} after ${MAX_RETRIES} attempts. Skipping."
+        echo "  ❌ ERROR: Failed to fetch data for ${POKEMON_NAME} after ${MAX_RETRIES} attempts. Skipping."
+        echo "ERROR: $(date) - Failed to fetch '${POKEMON_NAME}' after ${MAX_RETRIES} attempts" >> "${ERROR_LOG}"
     fi
-
+    
     # Delay between requests to be polite to the API
     if [ "${SUCCESS}" == "true" ]; then
         sleep ${DELAY_SECONDS}
     fi
+    
+    echo ""  # Empty line for readability
 done
 
 echo ""
 echo "Batch processing complete."
+
+# Show error summary
+echo ""
+echo "=== Error Summary ==="
+if [ "$(wc -l < "${ERROR_LOG}")" -gt 2 ]; then
+    echo "Some errors occurred during processing. Check ${ERROR_LOG} for details."
+    tail -n +3 "${ERROR_LOG}"  # Skip header lines
+else
+    echo "No errors occurred. All Pokémon fetched successfully!"
+fi
