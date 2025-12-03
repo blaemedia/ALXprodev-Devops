@@ -29,6 +29,11 @@ awk -F'\t' '{
         type_str = type_str toupper(substr(types_arr[j],1,1)) substr(types_arr[j],2)
     }
     
-    $name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall
-    printf "%s is of type %s, weighs %.1fkg, and is %.1fm tall.\n", name, type_str, weight_kg, height_m
-}'
+    # Remove trailing .0 from whole numbers to match sample format
+    formatted_weight = weight_kg
+    formatted_height = height_m
+    if (weight_kg == int(weight_kg)) formatted_weight = int(weight_kg)
+    if (height_m == int(height_m)) formatted_height = int(height_m)
+    
+    printf "%s is of type %s, weighs %skg, and is %sm tall.\n", name, type_str, formatted_weight, formatted_height
+}
