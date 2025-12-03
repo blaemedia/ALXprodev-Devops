@@ -1,49 +1,23 @@
-#!/bin/bash
-
-DATA_DIR="pokemon_data"
-REPORT_FILE="pokemon_report.csv"
-echo "Name,Height (m),Weight (kg)" > "${REPORT_FILE}"
-
-TOTAL_HEIGHT_M=0
-TOTAL_WEIGHT_KG=0
-COUNT=0
-
-echo "CSV Report generated at: ${REPORT_FILE}"
-echo "" >> "${REPORT_FILE}"
-
 for FILE in "${DATA_DIR}"/*.json; do
-
     if [ ! -f "$FILE" ]; then
         continue
     fi
 
     DATA=$(jq -r '[.name, .height, .weight] | @csv' "$FILE")
-
     CLEAN_DATA=$(echo "$DATA" | tr -d '"')
     NAME=$(echo "$CLEAN_DATA" | cut -d',' -f1)
     RAW_HEIGHT=$(echo "$CLEAN_DATA" | cut -d',' -f2)
     RAW_WEIGHT=$(echo "$CLEAN_DATA" | cut -d',' -f3)
+    
+    # Capitalize first letter using sed (ALX requirement)
+    CAPITALIZED_NAME=$(echo "$NAME" | sed 's/^\(.\)/\U\1/')
+
     FORMATTED_HEIGHT=$(echo "${RAW_HEIGHT}" | awk '{printf "%.1f", $1/10}')
     FORMATTED_WEIGHT=$(echo "${RAW_WEIGHT}" | awk '{printf "%.1f", $1/10}')
 
     echo "${CAPITALIZED_NAME},${FORMATTED_HEIGHT},${FORMATTED_WEIGHT}" >> "${REPORT_FILE}"
+    
     TOTAL_HEIGHT_M=$(echo "${TOTAL_HEIGHT_M} + ${FORMATTED_HEIGHT}" | bc)
     TOTAL_WEIGHT_KG=$(echo "${TOTAL_WEIGHT_KG} + ${FORMATTED_WEIGHT}" | bc)
     COUNT=$((COUNT + 1))
-
 done
-
-if [ $COUNT -gt 0 ]; then
-    # Calculate Averages using awk/bc:
-    # Average Height: Total Height / Count, formatted to 2 decimal places
-    AVERAGE_HEIGHT=$(echo "scale=2; ${TOTAL_HEIGHT_M} / ${COUNT}" | bc | awk '{printf "%.2f", $1}')
-    # Average Weight: Total Weight / Count, formatted to 2 decimal places
-    AVERAGE_WEIGHT=$(echo "scale=2; ${TOTAL_WEIGHT_KG} / ${COUNT}" | bc | awk '{printf "%.2f", $1}')
-    
-    # 6. Display the final averages to the terminal
-    echo ""
-    echo "Average Height: ${AVERAGE_HEIGHT} m"
-    echo "Average Weight: ${AVERAGE_WEIGHT} kg"
-else
-    echo "Error: No JSON files found in the '${DATA_DIR}' directory. Please run the fetch script first."
-fi
