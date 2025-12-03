@@ -1,39 +1,19 @@
 #!/bin/bash
 
-# Extract and format the data using jq, awk, and sed
-jq -r '[.name, .height, .weight, (.types[]?.type.name // empty)] | @tsv' pokemon_data.json | \
-awk -F'\t' '{
-    # Convert height and weight from decimetres/decigrams to metres/kg
-    height_m = $2/10
-    weight_kg = $3/10
-    
-    # Build type string - handle multiple types
-    type_str = ""
-    for (i=4; i<=NF; i++) {
-        if (type_str == "") {
-            type_str = $i
-        } else {
-            type_str = type_str " and " $i
-        }
-    }
-    
-    # Capitalize first letter of name
-    name = toupper(substr($1,1,1)) substr($1,2)
-    
-    # Capitalize first letter of each type
-    gsub(/\band\b/, "and", type_str)
-    split(type_str, types_arr, " and ")
-    type_str = ""
-    for (j in types_arr) {
-        if (type_str != "") type_str = type_str " and "
-        type_str = type_str toupper(substr(types_arr[j],1,1)) substr(types_arr[j],2)
-    }
-    
-    # Remove trailing .0 from whole numbers to match sample format
-    formatted_weight = weight_kg
-    formatted_height = height_m
-    if (weight_kg == int(weight_kg)) formatted_weight = int(weight_kg)
-    if (height_m == int(height_m)) formatted_height = int(height_m)
-    
-    printf "%s is of type %s, weighs %skg, and is %sm tall.\n", name, type_str, formatted_weight, formatted_height
-}
+JSON_FILE="data.json"
+
+if [ ! -f "${JSON_FILE}" ]; then
+    echo "Error: ${JSON_FILE} not found!"
+    echo "Please run the fetch script first to create the data file."
+    exit 1
+fi
+
+name=$(jq -r '.name' "${JSON_FILE}")
+height=$(jq -r '.height' "${JSON_FILE}")
+weight=$(jq -r '.weight' "${JSON_FILE}")
+type=$(jq -r '.types[0].type.name' "${JSON_FILE}")
+formatted_height=$(echo "${height}" | awk '{printf "%.1f", $1/10}')
+formatted_weight=$(echo "${weight}" | awk '{printf "%.0f", $1/10}')
+name_capitalized=$(echo "${name}" | sed 's/^./\U&/')
+type_capitalized=$(echo "${type}" | sed 's/^./\U&/')
+echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall."
