@@ -29,5 +29,6 @@ awk -F'\t' '{
         type_str = type_str toupper(substr(types_arr[j],1,1)) substr(types_arr[j],2)
     }
     
+    $name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall
     printf "%s is of type %s, weighs %.1fkg, and is %.1fm tall.\n", name, type_str, weight_kg, height_m
 }'
