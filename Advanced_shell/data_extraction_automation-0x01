@@ -1,12 +1,13 @@
 #!/bin/bash
 
+# Extract and format the data using jq, awk, and sed
 jq -r '[.name, .height, .weight, (.types[]?.type.name // empty)] | @tsv' pokemon_data.json | \
 awk -F'\t' '{
-    # Convert height and weight
+    # Convert height and weight from decimetres/decigrams to metres/kg
     height_m = $2/10
     weight_kg = $3/10
     
-    # Build type string
+    # Build type string - handle multiple types
     type_str = ""
     for (i=4; i<=NF; i++) {
         if (type_str == "") {
@@ -16,10 +17,11 @@ awk -F'\t' '{
         }
     }
     
-    # Capitalize name and types
+    # Capitalize first letter of name
     name = toupper(substr($1,1,1)) substr($1,2)
     
-    # Capitalize types properly
+    # Capitalize first letter of each type
+    gsub(/\band\b/, "and", type_str)
     split(type_str, types_arr, " and ")
     type_str = ""
     for (j in types_arr) {
@@ -27,11 +29,5 @@ awk -F'\t' '{
         type_str = type_str toupper(substr(types_arr[j],1,1)) substr(types_arr[j],2)
     }
     
-    # Format without trailing zeros
-    height_formatted = height_m
-    weight_formatted = weight_kg
-    gsub(/\.0+$/, "", height_formatted)
-    gsub(/\.0+$/, "", weight_formatted)
-    
-    print name " is of type " type_str ", weighs " weight_formatted "kg, and is " height_formatted "m tall."
+    printf "%s is of type %s, weighs %.1fkg, and is %.1fm tall.\n", name, type_str, weight_kg, height_m
 }'
